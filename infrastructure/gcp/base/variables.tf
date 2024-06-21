@@ -45,3 +45,12 @@ variable "uptime_alert_email" {
   type        = string
   description = "Email address to which uptime alerts should be sent"
 }
+
+variable "staging_subdomain" {
+  type = string
+  description = "Subdomain for the staging environment"
+}
+variable "production_subdomain" {
+  type = string
+  description = "Subdomain for the production environment"
+}

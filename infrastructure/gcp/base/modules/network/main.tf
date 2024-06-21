@@ -70,8 +70,9 @@ resource "google_compute_firewall" "ssh_iap_ingress" {
   }
 }
 
+//Used for having IPs assignable to cloud run
 resource "google_vpc_access_connector" "connector" {
-  name          = "${var.name}-vpc-conn"
+  name          = "${var.name}-vpc-con"
   provider      = google-beta
   region        = var.region
   ip_cidr_range = "10.0.16.0/28"
@@ -79,6 +80,8 @@ resource "google_vpc_access_connector" "connector" {
   depends_on    = [google_project_service.vpcaccess_api]
 }
 
+////////
+// This allows connecting privately to Google's network of services from CloudRun
 resource "google_compute_global_address" "private_ip_address" {
   provider = google-beta
 

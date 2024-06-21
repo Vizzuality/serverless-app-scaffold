@@ -1,0 +1,84 @@
+name: Build And Deploy to Cloud Run
+description: Build And Deploy to Cloud Run
+inputs:
+  GCP_SA_KEY:
+    description: "Service Account Key to log into GCP"
+    required: true
+  REPOSITORY:
+    description: "Repository"
+    required: true
+  SERVICE:
+    description: "Service"
+    required: true
+  PROJECT_ID:
+    description: "GCP Project Id"
+    required: true
+  GAR_LOCATION:
+    description: "GCP Artifact Registry url"
+    required: true
+  ENVIRONMENT_NAME:
+    description: "Environment name (PRODUCTION, STAGING)"
+    required: true
+  REGION:
+    description: "GCP Region"
+    required: true
+  COMPONENT_PATH:
+    description: "Component path of the component to be deployed (./cms, ./client ...)"
+    required: true
+  DRY_RUN:
+    description: "Makes the action work in Dry Run Mode"
+    required: false
+    default: "false" # WARNING Input type is not supported in composite actions. Must treat it as a string
+
+#NOTE Actions needs to specify the shell to use on every steps that uses "runs:" https://stackoverflow.com/questions/71041836/github-actions-required-property-is-missing-shell
+
+outputs:
+  url:
+    description: url
+    value: ${{steps.deploy.outputs.url}}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Google Auth
+      id: auth
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: "${{ inputs.GCP_SA_KEY }}"
+        token_format: 'access_token'
+
+    # Authenticate Docker to Google Cloud Artifact Registry via credentials json
+    - name: Docker Auth
+      id: docker-auth
+      uses: 'docker/login-action@v3'
+      with:
+        registry: ${{ inputs.GAR_LOCATION }}-docker.pkg.dev
+        username: _json_key
+        password: ${{ inputs.GCP_SA_KEY }}
+
+    - name: Build Container
+      shell: bash
+      run: |-
+        docker build -f ${{ inputs.COMPONENT_PATH }}/Dockerfile.prod -t "${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:${{ github.sha }}" ${{ inputs.COMPONENT_PATH }}
+
+    - name: Push Container
+      if: ${{ inputs.DRY_RUN == 'false' || inputs.DRY_RUN == '' }}
+      shell: bash
+      run: |-
+        docker push "${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:${{ github.sha }}"
+        # tag as "latest"
+        docker tag "${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:${{ github.sha }}" "${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:latest"
+        docker push "${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:latest"
+
+    - name: Deploy to Cloud Run
+      if: ${{ inputs.DRY_RUN == 'false' || inputs.DRY_RUN == '' }}
+      id: deploy
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ inputs.SERVICE }}
+        region: ${{ inputs.REGION }}
+        image: ${{ inputs.GAR_LOCATION }}-docker.pkg.dev/${{ inputs.PROJECT_ID }}/${{ inputs.REPOSITORY }}/${{ inputs.SERVICE }}:${{ github.sha }}
+        # NOTE: You can also set env variables here:
+        #  env_vars: |
+        #  NODE_ENV=production
+        #  TOKEN_EXPIRE=6400

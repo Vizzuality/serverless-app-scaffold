@@ -1,3 +1,9 @@
+resource "google_project_service" "compute_api" {
+  service            = "compute.googleapis.com"
+  project = var.project_id
+  disable_on_destroy = false
+}
+
 resource "google_compute_instance" "bastion" {
   name         = "${var.name}-bastion"
   machine_type = "e2-micro"
@@ -30,6 +36,7 @@ resource "google_compute_instance" "bastion" {
 }
 
 data "google_compute_default_service_account" "default" {
+  depends_on = [google_project_service.compute_api]
 }
 
 resource "google_project_iam_member" "sql_reader" {

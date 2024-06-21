@@ -39,7 +39,22 @@ variable "backend_cloud_run_name" {
   description = "Name of the backend Cloud Run service"
 }
 
+variable "cloud_function_name" {
+  type = string
+  description = "Name of the Cloud Function service"
+}
+
 variable "backend_path_prefix" {
   type        = string
   description = "Path prefix for the backend service"
+}
+
+variable "cloud_functions_path_prefix" {
+  type        = string
+  description = "Base Path prefix for the cloud function backend service"
+}
+
+variable "function_path_prefix" {
+  type        = string
+  description = "Specific Path prefix for the cloud function backend service"
 }

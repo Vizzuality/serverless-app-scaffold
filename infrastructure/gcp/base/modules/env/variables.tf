@@ -106,3 +106,50 @@ variable "backend_path_prefix" {
   type        = string
   description = "Path prefix for the backend service"
 }
+
+
+variable "cloud_functions_path_prefix" {
+  type        = string
+  description = "Path prefix for the functions services"
+}
+
+variable "function_path_prefix" {
+  type        = string
+  description = "Path prefix for the Cloud Function"
+}
+
+variable "function_timeout_seconds" {
+  type        = number
+  default     = 180
+  description = "Timeout for the Cloud Function"
+}
+
+variable "function_available_memory" {
+  type        = string
+  default     = "256M"
+  description = "Available memory for the Cloud Function"
+}
+
+variable "function_available_cpu" {
+  type        = number
+  default     = 1
+  description = "Available cpu for the Cloud Function"
+}
+
+variable "function_min_instance_count" {
+  type        = number
+  default     = 0
+  description = "Min instance count for the Cloud Function"
+}
+
+variable "function_max_instance_count" {
+  type        = number
+  default     = 1
+  description = "Max instance count for the Cloud Function"
+}
+
+variable "function_max_instance_request_concurrency" {
+  type        = number
+  default     = 80
+  description = "Max instance request concurrency for the Cloud Function"
+}

@@ -14,6 +14,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.5.1"
     }
+
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
+    }
   }
   required_version = "1.6.6"
 }
@@ -35,4 +40,8 @@ provider "google-beta" {
   default_labels = {
     managed-by = "terraform"
   }
+}
+
+provider "github" {
+  owner = "Vizzuality"
 }

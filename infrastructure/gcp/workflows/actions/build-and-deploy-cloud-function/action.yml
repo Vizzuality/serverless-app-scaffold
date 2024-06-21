@@ -1,0 +1,52 @@
+name: Build And Deploy to Cloud Run
+description: Build And Deploy to Cloud Run
+inputs:
+  GCP_SA_KEY:
+    description: "Service Account Key to log into GCP"
+    required: true
+  REGION:
+    description: "GCP Region"
+    required: true
+  CLOUD_FUNCTION_NAME:
+    description: "Cloud Function Name"
+    required: true
+  CLOUD_FUNCTION_PATH:
+    description: "Path to the source code of the Cloud Function to be deployed (./cloudfunction/someFunction ...)"
+    required: true
+  DRY_RUN:
+    description: "Makes the action work in Dry Run Mode"
+    required: false
+    default: "false" # WARNING Input type is not supported in composite actions. Must treat it as a string
+
+#NOTE Actions needs to specify the shell to use on every steps that uses "runs:" https://stackoverflow.com/questions/71041836/github-actions-required-property-is-missing-shell
+
+outputs:
+  url:
+    description: url
+    value: ${{steps.deploy.outputs.url}}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Google Auth
+      id: auth
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: "${{ inputs.GCP_SA_KEY }}"
+        token_format: 'access_token'
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v2'
+      with:
+        version: '>= 363.0.0'
+    #- name: 'Use gcloud CLI'
+     # shell: bash
+      #run: 'gcloud info'
+    - name: 'Deploy to gen2 cloud function'
+      if: ${{ inputs.DRY_RUN == 'false' || inputs.DRY_RUN == ''}}
+      shell: bash
+      #NOTE .env file must be in YAML format
+      run: |
+        gcloud functions deploy  ${{ inputs.CLOUD_FUNCTION_NAME }} \
+        --gen2 \
+        --region=${{ inputs.REGION }} \
+        --source=${{ inputs.CLOUD_FUNCTION_PATH}} \

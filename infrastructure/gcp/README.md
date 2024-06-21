@@ -20,7 +20,7 @@ Before proceeding, be sure you are familiar with all of these tools, as these in
 
 ### Terraform project
 
-This project (in the inrastructure directory) has 2 main sections, each of which with a folder named after it. Each of these sections has a Terraform project, that logically depends on their predecessors. There is a 3rd component to this architecture, which is handled by Github Actions.
+This project (in the infrastructure directory) has 2 main sections, each of which with a folder named after it. Each of these sections has a Terraform project, that logically depends on their predecessors. There is a 3rd component to this architecture, which is handled by Github Actions.
 
 #### Remote state
 
@@ -42,7 +42,7 @@ These resources include, but are not limited to:
 - Service accounts and permissions
 - GH Secrets
 
-To apply this project, you will need the following GCP permissions. These could probably be further fleshed out to a more restrictive set of permissions/roles, but this combination is know to work:
+To apply this project, you will need the following GCP permissions. These could probably be further fleshed out to a more restrictive set of permissions/roles, but this combination is known to work:
 
 - "Editor" role
 - "Secret Manager Admin" role
@@ -52,10 +52,10 @@ To apply this project, you will need the following GCP permissions. These could 
 
 The output values include access data for some of the resources above.
 
-Please note, there are some actions that might to be carried out manually - you'll get a promt from terraform with links to follow to complete the actions, e.g.:
+Please note, there are some actions that might need to be carried out manually - you'll get a promt from terraform with links to follow to complete the actions, e.g.:
 - Compute Engine API needs to be enabled
 
-ATTENTION: the CloudRun instances will be started with a default "hello" image on the first `terraform apply` (since fe / be images are not available yet); afterwards please ensure to uncomment the line in cloudrun/main.tf which points to the latest available image, so that you don't overwrite with the "hello" image on subsequent `terraform apply`.
+ATTENTION: the CloudRun instances will be started with a default "hello" image on the first `terraform apply` (since FE / BE images are not available yet); afterwards, please ensure to uncomment the relevant line in `cloudrun/main.tf` which points to the latest available image, so that you don't overwrite with the "hello" image on subsequent `terraform apply`.
 
 #### How to run
 
@@ -69,9 +69,7 @@ For both commands, please use `-var-file=vars/terraform.tfvars`` to provide the 
 For the second command, you will also need to set 2 environment variables:
 - GITHUB_TOKEN (your GH token)
 - GITHUB_OWNER (e.g. Vizzuality)
-to allow terraform to write to GH Secrets.
-
-Please note: when provisioning for the first time in a clean project, amend the `cloudrun` module by uncommenting the image setting to be used for first time deployment, which deploys a dummy "hello" image (because actual application images are going to be available in GAR only once the infrastructure is provisioned and the GH Actions deployment passed)
+  to allow terraform to write to GH Secrets.
 
 ### Github Actions
 
@@ -79,30 +77,31 @@ As part of this infrastructure, Github Actions are used to automatically apply c
 
 #### Building new code versions
 
-Deployment to the CloudRun instances is accomplished by building Docker images are built and pushing to [Artifact Registry](https://cloud.google.com/artifact-registry). When building the images, environment secrets are injected from GH Secrets as follows:
+Deployment to the CloudRun instances is accomplished by building Docker images and then pushing to [Artifact Registry](https://cloud.google.com/artifact-registry). When building the images, environment secrets are injected from GH Secrets as follows:
 - for the client application:
-  - the following secrets set by terraform in STAGING_CLIENT_ENV_TF_MANAGED (in the format of an .env file):
-    - NEXT_PUBLIC_URL
-    - NEXT_PUBLIC_API_URL
-    - NEXT_PUBLIC_ENVIRONMENT
-    - LOG_LEVEL
-  - additional secrets set manually in STAGING_CLIENT_ENV (copy to be managed in LastPass)
+    - the following secrets set by terraform in STAGING_CLIENT_ENV_TF_MANAGED (in the format of an .env file):
+        - NEXT_PUBLIC_URL
+        - NEXT_PUBLIC_API_URL
+        - NEXT_PUBLIC_CF_URL
+        - NEXT_PUBLIC_ENVIRONMENT
+        - LOG_LEVEL
+    - additional secrets set manually in STAGING_CLIENT_ENV (copy to be managed in LastPass)
 - for the CMS/API application
-  - the following secrets set by terraform in STAGING_CMS_ENV_TF_MANAGED (in the format of an .env file):
-    - HOST
-    - PORT
-    - APP_KEYS
-    - API_TOKEN_SALT
-    - ADMIN_JWT_SECRET
-    - TRANSFER_TOKEN_SALT
-    - JWT_SECRET
-    - CMS_URL
-    - DATABASE_CLIENT
-    - DATABASE_HOST
-    - DATABASE_NAME
-    - DATABASE_USERNAME
-    - DATABASE_PASSWORD
-    - DATABASE_SSL
+    - the following secrets set by terraform in STAGING_CMS_ENV_TF_MANAGED (in the format of an .env file):
+        - HOST
+        - PORT
+        - APP_KEYS
+        - API_TOKEN_SALT
+        - ADMIN_JWT_SECRET
+        - TRANSFER_TOKEN_SALT
+        - JWT_SECRET
+        - CMS_URL
+        - DATABASE_CLIENT
+        - DATABASE_HOST
+        - DATABASE_NAME
+        - DATABASE_USERNAME
+        - DATABASE_PASSWORD
+        - DATABASE_SSL
 
 The workflow is currently set up to deploy to the staging instance when merging to develop.
 
@@ -124,17 +123,17 @@ In case you need to access the Postgres database for the app, running in Cloud S
 This is a slimmed down version of [this guide](https://medium.com/google-cloud/cloud-sql-with-private-ip-only-the-good-the-bad-and-the-ugly-de4ac23ce98a)
 
 You will need the following information from the Google Cloud console:
-- <bastion-instance-name> - name of the bastion host VM instance in Compute Engine
-- <sql instance connection name> - connection name of the Cloud SQL instance
-- database password - secrets manager
+- < bastion-instance-name > - name of the bastion host VM instance in Compute Engine
+- < sql instance connection name > - connection name of the Cloud SQL instance
+- < database password > - secrets manager
 
-You will also need to ensure that the user has IAP-secured Tunnel User role.
+You will also need to ensure that the user has **IAP-secured Tunnel User role**.
 
 Steps:
-- (one time per user) Run `gcloud compute ssh <bastion instance name>` to SSH into the bastion host
+- (one time per user) Run `gcloud compute ssh <bastion instance name> --zone=<zone where bastion is located>` to SSH into the bastion host
 - (one time per bastion host) Inside the bastion host, follow the [steps to download and install
   the Cloud SQL Auth proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy#install)
-- (when connecting) Run `gcloud compute start-iap-tunnel <bastion instance name> 22 --local-host-port=localhost:4226` locally. This will start a tunnel, which you must keep open for the duration of your access to the SQL database
+- (when connecting) Run `gcloud compute start-iap-tunnel <bastion instance name> 22 --zone=<zone where bastion is located> --local-host-port=localhost:4226` locally. This will start a tunnel, which you must keep open for the duration of your access to the SQL database
 - (when connecting) Run `ssh -L 5433:localhost:5433 -i ~/.ssh/google_compute_engine -p 4226 localhost -- ./cloud-sql-proxy <sql instance connection name> --port=5433 --private-ip` locally. This will start a 2nd tunnel, which you must also keep open for the duration of your access to the SQL database
 - The remote Postgres database is now reachable on a local port 5433: `psql -h 127.0.0.1 -p 5433 -U db_user -W db_name`
 

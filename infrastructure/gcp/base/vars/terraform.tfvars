@@ -9,5 +9,7 @@ staging_project_name    = "staging prefix"
 production_project_name = "production prefix"
 
 domain = "some domain"
+staging_subdomain = "staging"
+production_subdomain = ""
 
 uptime_alert_email = "some email"

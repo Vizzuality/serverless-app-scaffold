@@ -2,6 +2,11 @@ locals {
   domain = var.subdomain == "" ? var.domain : "${var.subdomain}.${var.domain}"
 }
 
+resource "google_project_service" "iam_service" {
+  project = var.gcp_project_id
+  service = "iam.googleapis.com"
+}
+
 module "network" {
   source     = "../network"
   project_id = var.gcp_project_id
@@ -58,6 +63,42 @@ module "backend_cloudrun" {
   tag                = var.environment
 }
 
+module "cloud_function" {
+  source                           = "../cloudfunction"
+  region                           = var.gcp_region
+  project                          = var.gcp_project_id
+  vpc_connector_name               = module.network.vpc_access_connector_name
+  function_name                    = "${var.project_name}-eet"
+  description                      = "Earth Engine Tiler Cloud Function"
+  source_dir                       = "${path.root}/../../cloud_functions/earth_engine_tiler"
+  runtime                          = "nodejs20"
+  entry_point                      = "functionApp"
+  runtime_environment_variables    = local.cloud_function_env
+  secrets                          = local.cloud_function_secrets
+  timeout_seconds                  = var.function_timeout_seconds
+  available_memory                 = var.function_available_memory
+  available_cpu                    = var.function_available_cpu
+  min_instance_count               = var.function_min_instance_count
+  max_instance_count               = var.function_max_instance_count
+  max_instance_request_concurrency = var.function_max_instance_request_concurrency
+
+  depends_on = [module.postgres_application_user_password]
+}
+
+
+locals {
+  cloud_function_env = {}
+
+  cloud_function_secrets = [
+    /*{
+    key        = "CREDENTIALS_JSON"
+    project_id = var.gcp_project_id
+    secret     = module.some_credentials.secret_name
+    version    = module.some_credentials.latest_version
+    }*/
+  ]
+}
+
 module "database" {
   source            = "../sql"
   name              = var.project_name
@@ -73,13 +114,15 @@ module "database" {
   depends_on = [module.network.vpc_access_connector_name]
 }
 
-# if you need access to the DB from your local machine, uncomment this
-# module "bastion" {
-#   source          = "../bastion"
-#   name            = var.project_name
-#   project_id      = var.gcp_project_id
-#   subnetwork_name = module.network.subnetwork_name
-# }
+// if you need access to the DB from your local machine, uncomment this
+/*
+module "bastion" {
+  source          = "../bastion"
+  name            = var.project_name
+  project_id      = var.gcp_project_id
+  subnetwork_name = module.network.subnetwork_name
+}
+*/
 
 module "client_uptime_check" {
   source     = "../uptime-check"
@@ -97,12 +140,14 @@ module "cms_uptime_check" {
   project_id = var.gcp_project_id
 }
 
-module "error_reporting" {
+module "backend_error_reporting" {
   source                        = "../error-reporting"
   project_id                    = var.gcp_project_id
   backend_service_account_email = module.backend_cloudrun.service_account_email
 }
 
+//////////////////
+// Secrets and tokens
 resource "random_password" "api_token_salt" {
   length           = 32
   special          = true
@@ -133,6 +178,8 @@ resource "random_password" "app_key" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
+///////////////////////////
+// Service Account
 resource "google_service_account" "deploy_service_account" {
   account_id   = "${var.project_name}-deploy-sa"
   display_name = "${var.project_name} Deploy Service Account"
@@ -164,20 +211,20 @@ variable "roles" {
   ]
 }
 
-resource "google_project_service" "iam_service" {
-  project = var.gcp_project_id
-  service = "iam.googleapis.com"
-}
+
 
 module "load_balancer" {
-  source                  = "../load-balancer"
-  region                  = var.gcp_region
-  project                 = var.gcp_project_id
-  name                    = var.project_name
-  backend_cloud_run_name  = module.backend_cloudrun.name
-  frontend_cloud_run_name = module.frontend_cloudrun.name
-  domain                  = var.domain
-  subdomain               = var.subdomain
-  dns_managed_zone_name   = var.dns_zone_name
-  backend_path_prefix     = var.backend_path_prefix
+  source                      = "../load-balancer"
+  region                      = var.gcp_region
+  project                     = var.gcp_project_id
+  name                        = var.project_name
+  backend_cloud_run_name      = module.backend_cloudrun.name
+  frontend_cloud_run_name     = module.frontend_cloudrun.name
+  cloud_function_name         = module.cloud_function.function_name
+  cloud_functions_path_prefix = var.cloud_functions_path_prefix
+  function_path_prefix        = var.function_path_prefix
+  domain                      = var.domain
+  subdomain                   = var.subdomain
+  dns_managed_zone_name       = var.dns_zone_name
+  backend_path_prefix         = var.backend_path_prefix
 }

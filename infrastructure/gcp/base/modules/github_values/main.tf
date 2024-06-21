@@ -1,3 +1,5 @@
+// This module defines a Secret/Variable on Github for each key/value pair in the corresponding map
+
 resource "github_actions_secret" "github_secret" {
   for_each = var.secret_map
 

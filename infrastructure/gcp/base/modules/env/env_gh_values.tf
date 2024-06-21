@@ -2,6 +2,7 @@ locals {
   frontend_lb_url = "https://${local.domain}"
   cms_lb_url      = "https://${local.domain}/${var.backend_path_prefix}/"
   api_lb_url      = "https://${local.domain}/${var.backend_path_prefix}/api/"
+  cf_lb_url      = "https://${local.domain}/${var.cloud_functions_path_prefix}/${var.function_path_prefix}/"
   # to test while DNS not set up
   # frontend_lb_url    = module.frontend_cloudrun.cloudrun_service_url
   # cms_lb_url         = "${module.backend_cloudrun.cloudrun_service_url}/"
@@ -19,6 +20,7 @@ locals {
     "CLIENT_REPOSITORY" = module.frontend_gcr.repository_name
     "CMS_SERVICE"       = module.backend_cloudrun.name
     "CLIENT_SERVICE"    = module.frontend_cloudrun.name
+    "CF_NAME"           = module.cloud_function.function_name
   }
   # those need to have their names prefixed with the environment name, so as to be able to differentiate between staging and production
   # could be achieved using GH environments as well, which would be a good alternative flow, but it is not available in all GH plans
@@ -41,19 +43,37 @@ locals {
   client_variable_map_with_unprefixed_keys = {
     NEXT_PUBLIC_URL         = local.frontend_lb_url
     NEXT_PUBLIC_API_URL     = local.api_lb_url
+    NEXT_PUBLIC_CF_URL      = local.cf_lb_url
     NEXT_PUBLIC_ENVIRONMENT = "production"
     LOG_LEVEL               = "info"
   }
   client_secret_map_with_unprefixed_keys = {}
   client_variable_map = {
     for key, value in local.client_variable_map_with_unprefixed_keys :
-    "TF_${upper(var.environment)}_CLIENTENV_${key}" => value
+    "TF_${upper(var.environment)}_CLIENT_ENV_${key}" => value
   }
   client_secret_map = {
     for key, value in local.client_secret_map_with_unprefixed_keys :
-    "TF_${upper(var.environment)}_CLIENTENV_${key}" => value
+    "TF_${upper(var.environment)}_CLIENT_ENV_${key}" => value
   }
 
+  // Because CFs are built remotely there's no need to export environment variables
+  // known at `terraform apply` to GH.
+
+/*
+  gee_cf_variable_map_with_unprefixed_keys = {
+  }
+  gee_cf_secret_map_with_unprefixed_keys = {
+  }
+  gee_cf_variable_map = {
+    for key, value in local.gee_cf_variable_map_with_unprefixed_keys :
+    "TF_${upper(var.environment)}_GEE_CF_ENV_${key}" => value
+  }
+  gee_cf_secret_map = {
+    for key, value in local.gee_cf_secret_map_with_unprefixed_keys :
+    "TF_${upper(var.environment)}_GEE_CF_ENV_${key}" => value
+  }
+*/
   cms_variable_map_with_unprefixed_keys = {
     CMS_URL = local.cms_lb_url
   }
@@ -81,11 +101,11 @@ locals {
   }
   cms_variable_map = {
     for key, value in local.cms_variable_map_with_unprefixed_keys :
-    "TF_${upper(var.environment)}_CMSENV_${key}" => value
+    "TF_${upper(var.environment)}_CMS_ENV_${key}" => value
   }
   cms_secret_map = {
     for key, value in local.cms_secret_map_with_unprefixed_keys :
-    "TF_${upper(var.environment)}_CMSENV_${key}" => value
+    "TF_${upper(var.environment)}_CMS_ENV_${key}" => value
   }
 }
 

@@ -32,4 +32,8 @@ resource "google_secret_manager_secret_version" "backend_app_secret" {
 
 data "google_secret_manager_secret_version" "latest" {
   secret = google_secret_manager_secret.secret.id
+
+  // Without this dependency, on first run it will fail, or might access the previous version instead on subsequent runs,
+  // because it might access the secret before it is updated.
+  depends_on = [google_secret_manager_secret_version.backend_app_secret]
 }

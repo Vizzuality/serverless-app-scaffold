@@ -8,25 +8,27 @@ terraform {
 }
 
 module "staging" {
-  source              = "./modules/env"
-  gcp_project_id      = var.gcp_project_id
-  gcp_region          = var.gcp_region
-  github_org          = var.github_org
-  github_project      = var.github_project
-  github_branch       = "develop"
-  project_name        = var.staging_project_name
-  frontend_min_scale  = 0
-  backend_min_scale   = 0
-  frontend_max_scale  = 1
-  backend_max_scale   = 2
-  dns_zone_name       = module.dns.dns_zone_name
-  domain              = var.domain
-  subdomain           = "subdomain"
-  backend_path_prefix = "cms"
-  uptime_alert_email  = var.uptime_alert_email
-  environment         = "staging"
-  database_name       = "strapi"
-  database_user       = "strapi"
+  source                     = "./modules/env"
+  gcp_project_id              = var.gcp_project_id
+  gcp_region                  = var.gcp_region
+  github_org                  = var.github_org
+  github_project              = var.github_project
+  github_branch               = "staging"
+  project_name                = var.staging_project_name
+  frontend_min_scale          = 0
+  backend_min_scale           = 0
+  frontend_max_scale          = 1
+  backend_max_scale           = 2
+  dns_zone_name               = module.dns.dns_zone_name
+  domain                      = var.domain
+  subdomain                   = var.staging_subdomain
+  backend_path_prefix         = "cms"
+  cloud_functions_path_prefix = "functions"
+  function_path_prefix        = "someFunction"
+  uptime_alert_email          = var.uptime_alert_email
+  environment                 = "staging"
+  database_name               = "strapi"
+  database_user               = "strapi"
 }
 
 module "dns" {

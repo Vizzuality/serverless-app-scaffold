@@ -1,0 +1,297 @@
+# The workflow processes GH secrets and variables managed by Terraform or manually, some of them for general usage in
+# the github jobs, and some which component-relevant (cms, client, etc), used to build the .env files for the containers.
+# These follow the naming convention:
+# - TF_[PRODUCTION|<UPPER CASE BRANCH NAME>]_[CLIENT_ENV|CMS_ENV|]_* - managed by Terraform
+# - [PRODUCTION|<UPPER CASE BRANCH NAME>]_[CLIENT_ENV|CMS_ENV|]_* - managed manually
+
+name: Run deploy to GCP
+
+on:
+  workflow_dispatch:
+    #Important note on dispatch inputs. It's not possible to have default values for workflow_dispatch inputs on push events
+    # so they *will be empty*. Keep that in mind when using these inputs through the workflow (see dry run on the build/deploy action)
+    inputs:
+      ENVIRONMENT_NAME_OVERRIDE:
+        description: "Environment name to override"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry Run (No deployment)"
+        required: false
+        default: false
+        type: boolean
+
+  push:
+    branches:
+      - main
+      - staging
+
+    paths:
+      - 'client/**'
+      - 'cms/**'
+      - 'cloud_functions/**'
+      - '.github/workflows/*'
+      - 'infrastructure/**'
+
+env:
+  PROJECT_ID: ${{ secrets.TF_GCP_PROJECT_ID }}
+  GAR_LOCATION: ${{ secrets.TF_GCP_REGION }}
+  REGION: ${{ secrets.TF_GCP_REGION }}
+
+jobs:
+  deploy_client:
+    # Add 'id-token' with the intended permissions for workload identity federation
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV_PREFIX: CLIENT_ENV
+      APP_ENV_PATH: client/.env.local
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: client-changes
+        with:
+          filters: |
+            client:
+              - 'client/**'
+              - '.github/workflows/**'
+
+      - name: Applicable check
+        id: applicable_check
+        run: |
+          {
+            echo "flag=${{ github.event_name == 'workflow_dispatch' || steps.client-changes.outputs.client == 'true' }}"
+          } >> $GITHUB_OUTPUT
+
+      - name: Extract branch name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: |
+          {
+            branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+            echo "branch=${branch}"
+            echo "branch_upper=${branch^^}"
+          } >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Set environment name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: environment_name
+        run: |
+          {
+            echo "ENVIRONMENT=${{ inputs.ENVIRONMENT_NAME_OVERRIDE || steps.extract_branch.outputs.branch == 'main' && 'PRODUCTION' || steps.extract_branch.outputs.branch_upper }}"
+          } >> $GITHUB_ENV
+
+      - name: Output secrets and vars as JSON
+        if: ${{ steps.applicable_check.outputs.flag }}
+        # Use GH Actions toJSON function to convert secrets and vars to JSON; in case no values present, output null (otherwise jq will fail)
+        run: |
+          {
+            echo 'secrets<<EOF'
+            echo '${{ secrets != null && toJSON(secrets) || null }}'
+            echo 'EOF'
+            echo 'vars<<EOF'
+            echo '${{ vars != null && toJSON(vars) || null }}'
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+        id: env_json
+
+      - name: Generate Env file from Secrets/Vars
+        id: generate_env_file
+        if: ${{ steps.applicable_check.outputs.flag }}
+        uses: ./.github/actions/generate-env-file-from-json
+        with:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          APP_ENV_PREFIX: ${{ env.APP_ENV_PREFIX }}
+          secrets_json: ${{ steps.env_json.outputs.secrets }}
+          vars_json: ${{ steps.env_json.outputs.vars }}
+
+      - name: Save .env file
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: |
+          echo '${{ steps.generate_env_file.outputs.env_file }}' >> $APP_ENV_PATH
+          cat $APP_ENV_PATH
+
+      - name: Build and Deploy
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: build_and_deploy
+        uses: ./.github/actions/build-and-deploy-cloud-run
+        with:
+          GCP_SA_KEY: ${{ secrets[format('TF_{0}_GCP_SA_KEY', env.ENVIRONMENT)] }}
+          COMPONENT_PATH: "./client"
+          ENVIRONMENT_NAME: ${{ env.ENVIRONMENT }}
+          GAR_LOCATION: ${{ env.GAR_LOCATION }}
+          PROJECT_ID: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
+          REPOSITORY: ${{ secrets[format('TF_{0}_CLIENT_REPOSITORY', env.ENVIRONMENT)] }}
+          SERVICE: ${{ secrets[format('TF_{0}_CLIENT_SERVICE', env.ENVIRONMENT)] }}
+          DRY_RUN: ${{ inputs.dry_run }}
+
+      # If required, use the Cloud Run url output in later steps
+      - name: Show Output
+        run: echo ${{ steps.build_and_deploy.outputs.url || 'No URL generated' }}
+
+  deploy_cms:
+    # Add 'id-token' with the intended permissions for workload identity federation
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV_PREFIX: CMS_ENV
+      APP_ENV_PATH: cms/.env
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: cms-changes
+        with:
+          filters: |
+            cms:
+              - 'cms/**'
+              - '.github/workflows/**'
+
+      - name: Applicable check
+        id: applicable_check
+        run: |
+          {
+            echo "flag=${{ github.event_name == 'workflow_dispatch' || steps.cms-changes.outputs.cms == 'true' }}"
+          } >> $GITHUB_OUTPUT
+
+      - name: Extract branch name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: |
+          {
+            branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+            echo "branch=${branch}"
+            echo "branch_upper=${branch^^}"
+          } >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Set environment name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: environment_name
+        run: |
+          {
+            echo "ENVIRONMENT=${{ inputs.ENVIRONMENT_NAME_OVERRIDE ||steps.extract_branch.outputs.branch == 'main' && 'PRODUCTION' || steps.extract_branch.outputs.branch_upper }}"
+          } >> $GITHUB_ENV
+
+      - name: Output secrets and vars as JSON
+        if: ${{ steps.applicable_check.outputs.flag }}
+        # Use GH Actions toJSON function to convert secrets and vars to JSON; in case no values present, output null (otherwise jq will fail)
+        run: |
+          {
+            echo 'secrets<<EOF'
+            echo '${{ secrets != null && toJSON(secrets) || null }}'
+            echo 'EOF'
+            echo 'vars<<EOF'
+            echo '${{ vars != null && toJSON(vars) || null }}'
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+        id: env_json
+
+      - name: Generate Env file from Secrets/Vars
+        id: generate_env_file
+        if: ${{ steps.applicable_check.outputs.flag }}
+        uses: ./.github/actions/generate-env-file-from-json
+        with:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          APP_ENV_PREFIX: ${{ env.APP_ENV_PREFIX }}
+          secrets_json: ${{ steps.env_json.outputs.secrets }}
+          vars_json: ${{ steps.env_json.outputs.vars }}
+
+      - name: Save .env file
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: |
+          echo '${{ steps.generate_env_file.outputs.env_file }}' >> $APP_ENV_PATH
+          cat $APP_ENV_PATH
+
+      - name: Build and Deploy
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: build_and_deploy
+        uses: ./.github/actions/build-and-deploy-cloud-run
+        with:
+          GCP_SA_KEY: ${{ secrets[format('TF_{0}_GCP_SA_KEY', env.ENVIRONMENT)] }}
+          COMPONENT_PATH: "./cms"
+          ENVIRONMENT_NAME: ${{ env.ENVIRONMENT }}
+          GAR_LOCATION: ${{ env.GAR_LOCATION }}
+          PROJECT_ID: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
+          REPOSITORY: ${{ secrets[format('TF_{0}_CMS_REPOSITORY', env.ENVIRONMENT)] }}
+          SERVICE: ${{ secrets[format('TF_{0}_CMS_SERVICE', env.ENVIRONMENT)] }}
+          DRY_RUN: ${{ inputs.dry_run }}
+
+      # If required, use the Cloud Run url output in later steps
+      - name: Show Output
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: echo ${{ steps.build_and_deploy.outputs.url || 'No URL generated' }}
+
+  deploy_cloud_function:
+    # Add 'id-token' with the intended permissions for workload identity federation
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: cf-changes
+        with:
+          filters: |
+            cloud_function:
+              - 'cloud_functions/**'
+              - '.github/workflows/**'
+
+      - name: Applicable check
+        id: applicable_check
+        run: |
+          {
+            echo "flag=${{ github.event_name == 'workflow_dispatch' || steps.cf-changes.outputs.cloud_function == 'true' }}"
+          } >> $GITHUB_OUTPUT
+
+      - name: Extract branch name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: |
+          {
+            branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+            echo "branch=${branch}"
+            echo "branch_upper=${branch^^}"
+          } >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Set environment name
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: environment_name
+        run: |
+          {
+            echo "ENVIRONMENT=${{ inputs.ENVIRONMENT_NAME_OVERRIDE || steps.extract_branch.outputs.branch == 'main' && 'PRODUCTION' || steps.extract_branch.outputs.branch_upper }}"
+          } >> $GITHUB_ENV
+
+      - name: Build and Deploy
+        if: ${{ steps.applicable_check.outputs.flag }}
+        id: build_and_deploy
+        uses: ./.github/actions/build-and-deploy-cloud-function
+        with:
+          GCP_SA_KEY: ${{ secrets[format('TF_{0}_GCP_SA_KEY', env.ENVIRONMENT)] }}
+          REGION: ${{ env.REGION }}
+          CLOUD_FUNCTION_NAME: ${{ secrets[format('TF_{0}_CF_NAME', env.ENVIRONMENT)] }}
+          CLOUD_FUNCTION_PATH: "cloud_functions/some_function/"
+          DRY_RUN: ${{ inputs.dry_run }}
+
+      # If required, use the Cloud Run url output in later steps
+      - name: Show Output
+        if: ${{ steps.applicable_check.outputs.flag }}
+        run: echo ${{ steps.build_and_deploy.outputs.url || 'No URL generated' }}
+

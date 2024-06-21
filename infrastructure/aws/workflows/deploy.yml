@@ -94,7 +94,7 @@ jobs:
 
       - name: Filter secrets and vars for inclusion in .env file by environment and application prefixes
         if: ${{ github.event_name == 'workflow_dispatch' || steps.client-changes.outputs.client == 'true' }}
-        # Use grep to filter client secrets & vars and save .env file (names starting with (TF_)((PRODUCTION|STAGING|SOMEBRANCH)_)[CLIENT_ENV|CMS_ENV]_
+        # Use grep to filter client secrets & vars and save .env file (names starting with (TF_)((PRODUCTION|STAGING|SOMEBRANCH)_)[CLIENT_ENV|CMS_ENV]-_
         run: |
           {
             echo 'entries_filtered<<EOF'

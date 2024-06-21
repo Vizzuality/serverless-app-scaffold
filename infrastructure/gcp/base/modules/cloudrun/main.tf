@@ -30,8 +30,8 @@ resource "google_cloud_run_service" "cloud_run" {
       service_account_name = google_service_account.service_account.email
 
       containers {
-        ##### FIRST RUN #####
-        # Google provides a pre-deployed “Hello Cloud Run”
+        ##### FIRST TERRAFORM RUN #####
+        # Google provides a pre-deployed “Hello Cloud Run”, use the relevant image right below, after first successful TF run
         image = "gcr.io/cloudrun/hello"
         # image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository}/${var.name}:latest"
 

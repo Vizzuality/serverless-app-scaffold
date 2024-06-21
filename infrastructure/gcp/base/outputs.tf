@@ -10,6 +10,10 @@ output "staging_api_url" {
   value = module.staging.api_url
 }
 
+output "staging_function_url" {
+  value = module.staging.function_url
+}
+
 output "dns_name_servers" {
   value = module.dns.dns_name_servers
 }
